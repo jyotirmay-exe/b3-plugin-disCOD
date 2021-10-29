@@ -1,0 +1,26 @@
+<configuration plugin="link">
+    <settings name="settings">
+        <!-- minimum client level to access the commands 0,1,2,20.. -->
+        <set name="minimum_level">1</set>
+        <!-- 0/1 on whether to warn senior admins or not -->
+        <set name="warn_senior">1</set>
+    </settings>
+
+    <!-- make sure to spell the keywords correctly like {client_name}, {dc_tag} etc. when modifying the messages -->
+	<settings name="messages">
+        <!-- id command's response-->
+        <set name="id_message">^3{client_name}'s^7 B3 ID is ^0[^2@{client_id}^0]^7</set>
+        <!-- for warning when an invalid pin is entered -->
+        <set name="warn_reason">^7Invalid pin entered. Re-check it!</set>
+        <!-- for message when linking is successful -->
+        <set name="success_message">B3 ID ^0[^2@{id}^0]^7 successfully linked to discord account ^3{dc_tag}</set>
+        <!-- for message when linked=1, still an attempt is made to link -->
+        <set name="reattempt_message">You have already linked your account noob!</set>
+        <!-- for message when no link is initiated from discord -->
+        <set name="notfound_message">^3No account found linked to the given ID. Head over to ^0[^3v^0.^3F^0]^3's discord to link it.</set>
+        <!-- for linktest command -->
+        <set name="linktest_message">B3 ID ^0[^2@{id}^0]^7 is linked to discord account ^3{dc}^7 since ^3{time}</set>
+        <!-- for linktest command when row is matched but linked=0 -->
+        <set name="linktest_pending_message">Account linking is awaiting confirmation. Type ^2!link ^38-digit-pin^7 to confirm it.</set>
+	</settings>
+</configuration>
