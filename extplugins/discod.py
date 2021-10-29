@@ -17,6 +17,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.debug("config loaded normal")
         self.debug("now loading config messages...")
         #loading settings
+        self.create_table = int(self.config.getint("settins","create_table"))
         self.min_level = int(self.config.getint("settings","min_level"))
         self.warn_senior = int(self.config.getint("settings","warn_senior"))
         self.send_eligible = int(self.config.getint("settings","send_eligible"))
