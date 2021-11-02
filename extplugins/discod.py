@@ -28,7 +28,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.send_eligible = int(self.config.getint("settings","send_eligible"))
         self.min_interval = int(self.config.getint("settings","minInterval"))
         self.autoPromote = int(self.config.getint("settings","auto_promote"))
-        self.autoDemote = int(self.config.getint("settins","auto_demote"))
+        self.autoDemote = int(self.config.getint("settings","auto_demote"))
         self.invite_link = str(self.config.get("settings","invite_link"))
 
         #loading kills required
