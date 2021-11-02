@@ -28,6 +28,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.send_eligible = int(self.config.getint("settings","send_eligible"))
         self.min_interval = int(self.config.getint("settings","minInterval"))
         self.autoPromote = int(self.config.getint("settings","auto_promote"))
+        self.autoDemote = int(self.config.getint("settins","auto_demote"))
         self.invite_link = str(self.config.get("settings","invite_link"))
 
         #loading kills required
@@ -47,6 +48,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.linktest_pending_message = str(self.config.get("responses","linkPending_message"))
         self.autoPromotion_message = str(self.config.get("responses","autoPromotion_message"))
         self.autoPromotionEligible_message = str(self.config.get("responses","autoPromotionEligible_message"))
+        self.autoDemotion_message = str(self.config.get("responses","autoDemotion_message"))
         
         #loading specific help docstrings for cmds
         funcs = [func for func in dir(self) if func.startswith("_") is False]
@@ -226,6 +228,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         cKills = self.getKills(client)
 
         if self.isDemoted(client):
+            self.debug("skipping promotion check for @%s cuz they have an active demotion."%client.id)
             return
         
         reqKills = sorted(self.reqKills.items(), key = lambda x:x[1])
@@ -269,6 +272,15 @@ class DiscodPlugin(b3.plugin.Plugin):
         
     def onEvent(self,event):
         if event.type == b3.events.EVT_CLIENT_AUTH:
+            if self.autoDemote==1:
+                if event.client.maxLevel>1:
+                    if not self.isLinked(event.client):
+                        group = Group(keyword="user")
+                        newgroup = self.console.storage.getGroup(group)
+                        event.client.setGroup(newgroup)
+                        event.client.save()
+                        event.client.message(self.autoDemotion_message)
+                        self.debug("demoted @%s to user for not linking their account"%event.client.id)
             if self.autoPromote==1:
                 promotion = self.getPromotion(client=event.client)
                 if promotion is None:
