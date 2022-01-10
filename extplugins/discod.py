@@ -14,7 +14,7 @@ class DiscodPlugin(b3.plugin.Plugin):
     requiresConfigFile = True
     
     def onLoadConfig(self):
-        f = open(".\\extplugins\\conf\\disCOD.sql")
+        f = open(".\\b3\\extplugins\\conf\\disCOD.sql")
         temp = f.read().splitlines()
         self.tableQuery = ""
         for ele in temp:
@@ -80,6 +80,8 @@ class DiscodPlugin(b3.plugin.Plugin):
             self.debug('[UNLINK] command registered in the admin plugin')
             self._adminPlugin.registerCommand(self, 'linktest', self.min_level, self.cmd_linktest)
             self.debug('[LINKTEST] command registered in the admin plugin')
+            self._adminPlugin.registerCommand(self, "nok", self.min_level, self.cmd_nok)
+            self.debug('[NOK] command registered in the admin plugin')
             self.registerEvent(b3.events.EVT_CLIENT_AUTH)
             try:
                 self.console.storage._query("select * from discod;")
@@ -226,7 +228,8 @@ class DiscodPlugin(b3.plugin.Plugin):
     def getPromotion(self,client):
         cGroup = client.maxGroup.keyword
         cKills = self.getKills(client)
-
+        if client.maxLevel == 100:
+            return
         if self.isDemoted(client):
             self.debug("skipping promotion check for @%s cuz they have an active demotion."%client.id)
             return
@@ -244,6 +247,43 @@ class DiscodPlugin(b3.plugin.Plugin):
         for i in range(ind,len(reqKills)):
             if cKills>=reqKills[i][1]:
                 killsGroup = reqKills[i][0]
+            else:
+                break
+
+        group = Group(keyword=killsGroup)
+
+        if group.keyword != cGroup:
+            newGroup = self.console.storage.getGroup(group)
+            return newGroup
+        else:
+            return None
+    
+    def getNextPromotion(self,client):
+        cGroup = client.maxGroup.keyword
+        cKills = self.getKills(client)
+        if client.maxLevel == 100:
+            return
+        if self.isDemoted(client):
+            self.debug("skipping promotion check for @%s cuz they have an active demotion."%client.id)
+            return False
+        
+        if not self.isLinked(client):
+            self.debug("skipping promotion check for @%s cuz they haven't linked."%client.id)
+            return False
+        
+        reqKills = sorted(self.reqKills.items(), key = lambda x:x[1])
+
+        if cKills > self.reqKills[cGroup]:
+            ind = None
+            for i in range(0,len(reqKills)):
+                if reqKills[i][0]==cGroup:
+                    ind = i
+
+        killsGroup = None
+
+        for i in range(ind,len(reqKills)):
+            if cKills>=reqKills[i][1]:
+                killsGroup = reqKills[i+1][0]
             else:
                 break
 
@@ -288,3 +328,16 @@ class DiscodPlugin(b3.plugin.Plugin):
                 else:
                     thread = threading.Thread(target=self.promoteClient,args=(event.client,promotion),)
                     thread.start()
+
+    def cmd_nok(self,data,client,cmd=None):
+        if data or not data:
+            res = self.getNextPromotion(client)
+            self.debug(res)
+            if res:
+                self.debug(self.reqKills[res.keyword])
+                self.debug(self.getKills(client))
+                killdiff = self.reqKills[res.keyword]-self.getKills(client)
+                if killdiff:
+                    cmd.sayLoudOrPM(client,self.config.get("responses","nok_message")%(killdiff,res.name,res.level))
+                    return
+            client.message("Your are not eligible for further promotion.")
