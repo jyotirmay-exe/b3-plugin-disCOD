@@ -272,7 +272,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             return False
         
         reqKills = sorted(self.reqKills.items(), key = lambda x:x[1])
-
+        ind = None
         if cKills > self.reqKills[cGroup]:
             ind = None
             for i in range(0,len(reqKills)):
@@ -280,7 +280,8 @@ class DiscodPlugin(b3.plugin.Plugin):
                     ind = i
 
         killsGroup = None
-
+        if ind == None:
+            return False
         for i in range(ind,len(reqKills)):
             if cKills>=reqKills[i][1]:
                 killsGroup = reqKills[i+1][0]
