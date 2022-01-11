@@ -14,22 +14,15 @@ class DiscodPlugin(b3.plugin.Plugin):
     requiresConfigFile = True
     
     def onLoadConfig(self):
-        f = open(".\\b3\\extplugins\\conf\\disCOD.sql")
-        temp = f.read().splitlines()
-        self.tableQuery = ""
-        for ele in temp:
-            self.tableQuery+=ele
-        self.debug("config loaded normal")
-        self.debug("now loading config messages...")
         #loading settings
         self.create_table = int(self.config.getint("settings","create_table"))
-        self.min_level = int(self.config.getint("settings","min_level"))
         self.warn_senior = int(self.config.getint("settings","warn_senior"))
         self.send_eligible = int(self.config.getint("settings","send_eligible"))
         self.min_interval = int(self.config.getint("settings","minInterval"))
         self.autoPromote = int(self.config.getint("settings","auto_promote"))
         self.autoDemote = int(self.config.getint("settings","auto_demote"))
         self.invite_link = str(self.config.get("settings","invite_link"))
+        self.susinterval = int(self.config.get("settings","susinterval"))
 
         #loading kills required
         self.reqKills = {}
@@ -49,6 +42,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.autoPromotion_message = str(self.config.get("responses","autoPromotion_message"))
         self.autoPromotionEligible_message = str(self.config.get("responses","autoPromotionEligible_message"))
         self.autoDemotion_message = str(self.config.get("responses","autoDemotion_message"))
+        self.ss_sus_announce = str(self.config.get("responses","ss_sus_announce"))
         
         #loading specific help docstrings for cmds
         funcs = [func for func in dir(self) if func.startswith("_") is False]
@@ -60,39 +54,67 @@ class DiscodPlugin(b3.plugin.Plugin):
             except Exception as ex:
                 self.debug(ex)
 
-        self.debug("config messages and settings loaded normal")
-
     def onStartup(self):
         global pluginInstance
         pluginInstance = self
-    
+        self.screenshots = {}
+        
         self._adminPlugin = self.console.getPlugin('admin')
         if not self._adminPlugin:
             self.debug('Could not find admin plugin')
             return False
-        else:
-            self.debug('plugin started normal')
-            self._adminPlugin.registerCommand(self, "id", self.min_level, self.cmd_id)
-            self.debug('[ID] command registered in the admin plugin')
-            self._adminPlugin.registerCommand(self, 'link', self.min_level, self.cmd_link)
-            self.debug('[LINK] command registered in the admin plugin')
-            self._adminPlugin.registerCommand(self, 'unlink', self.min_level, self.cmd_unlink)
-            self.debug('[UNLINK] command registered in the admin plugin')
-            self._adminPlugin.registerCommand(self, 'linktest', self.min_level, self.cmd_linktest)
-            self.debug('[LINKTEST] command registered in the admin plugin')
-            self._adminPlugin.registerCommand(self, "nok", self.min_level, self.cmd_nok)
-            self.debug('[NOK] command registered in the admin plugin')
-            self.registerEvent(b3.events.EVT_CLIENT_AUTH)
-            try:
-                self.console.storage._query("select * from discod;")
-                self.debug("located discod table")
-            except _mysql.ProgrammingError as ex:
-                self.error("error locating `discod` table:")
-                self.error(ex)
-                if self.create_table==1:
-                    self.console.storage._query(self.tableQuery)
-                    self.debug("created discod table as it didn't exist")
-    
+
+        # check if tables exist
+        tableCheck = self.console.storage._query("SHOW TABLES like 'discod'")
+        rows = tableCheck.getOneRow()
+        if rows == {}:
+            self.error("Required table for disCOD plugin doesn't exist")
+            return False
+
+        tableCheck = self.console.storage._query("SHOW TABLES like 'discod_reso'")
+        rows = tableCheck.getOneRow()
+        if rows == {}:
+            self.debug("'discod_reso' table does not exist")
+            self.resoTableExists = False
+        else: self.resoTableExists = True
+
+        tableCheck = self.console.storage._query("SHOW TABLES like 'demotions'")
+        rows = tableCheck.getOneRow()
+        if rows == {}:
+            self.debug("demotions does not exist")
+            self.demotionsTableExists = False
+        else: self.demotionsTableExists = True
+
+## works but cant get optional commands this way
+        # if 'commands' in self.config.sections():
+        #     for cmd in self.config.options('commands'):
+        #         level = self.config.get('commands', cmd)
+        #         sp = cmd.split('-')
+        #         alias = None
+        #         if len(sp) == 2: cmd, alias = sp
+        #         func = self.getCmd(cmd)
+        #         if func: self._adminPlugin.registerCommand(self, cmd, level, func, alias)
+
+        self._adminPlugin.registerCommand(self, "id", self.config.get('commands', "id"), self.cmd_id )
+        self._adminPlugin.registerCommand(self, "link", self.config.get('commands', "link"), self.cmd_link )
+        self._adminPlugin.registerCommand(self, "linktest", self.config.get('commands', "linktest"), self.cmd_linktest )
+        self._adminPlugin.registerCommand(self, "unlink", self.config.get('commands', "unlink"), self.cmd_unlink )
+        if self.autoPromote:
+            self._adminPlugin.registerCommand(self, "nok", self.config.get('commands', "nok"), self.cmd_nok )
+        if self.resoTableExists:
+            self._adminPlugin.registerCommand(self, "resolution", self.config.get('commands', "resolution"), self.cmd_resolution, "reso" )
+            self._adminPlugin.registerCommand(self, "getss", self.config.get('commands', "getss"), self.cmd_getss, "ss" )    
+
+        self.registerEvent(b3.events.EVT_CLIENT_AUTH)
+        self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
+
+    # def getCmd(self, cmd):
+    #     cmd = 'cmd_%s' % cmd
+    #     if hasattr(self, cmd):
+    #         func = getattr(self, cmd)
+    #         return func
+    #     return None
+
     def cmd_id(self,data,client,cmd=None):
         if not data:
             cmd.sayLoudOrPM(client, self.id_message.format(client_name = client.name, client_id = client.id))
@@ -107,7 +129,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             client.message('^7Incorrect command syntax. ^3!link <8-digit-pin>^7 or type ^2!help link')
             return False
 
-        cursor = self.console.storage._query("select * from discod where b3_id = %s;"%(str(client.id)))
+        cursor = self.console.storage._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
         rows = cursor.getOneRow()
         if not rows:
             client.message(self.notfound_message.format(invite=self.invite_link))
@@ -118,50 +140,42 @@ class DiscodPlugin(b3.plugin.Plugin):
                 if linked == 1:
                     client.message(self.reattempt_message)
                     return False
-                self.console.storage._query("update discod set linked = 1, linktime = UNIX_TIMESTAMP() where b3_id = %s;"%(str(client.id)))
-                cursor = self.console.storage._query("select dc_tag from discod where b3_id = %s;"%(str(client.id)))
+                self.console.storage._query("UPDATE discod SET linked = 1, linktime = UNIX_TIMESTAMP() WHERE b3_id = %s;"%(str(client.id)))
+                cursor = self.console.storage._query("SELECT dc_tag FROM discod WHERE b3_id = %s;"%(str(client.id)))
                 rows = cursor.getOneRow()
                 if rows['dc_tag']:
                     dc_tag = ""
                     for ch in rows['dc_tag']:
                         if not ch.isalnum() and not ch=="#" and not ch=="_" and not ch.isspace():
                             dc_tag+='?'
-                        else:
-                            dc_tag+=ch
-                self.debug("@%s linked to %s"%(client.id,dc_tag))
+                        else: dc_tag+=ch
                 cmd.sayLoudOrPM(client,self.success_message.format(id = client.id, dc_tag = dc_tag))
                 promotion = self.getPromotion(client=client)
-                if promotion is None:
-                    return
+                if promotion is None: return
                 else:
                     thread = threading.Thread(target=self.promoteClient,args=(client,promotion),)
                     thread.start()
 
             else:
-                if linked == 1:
-                    client.message(self.reattempt_message)
+                if linked == 1: client.message(self.reattempt_message)
                 else:
                     if self.warn_senior==0:
-                        if client.maxLevel < 80:
-                            self._adminPlugin.warnClient(client,self.warn_message)
-                        else:
-                            client.message(self.warn_message)
-                    else:
-                        self._adminPlugin.warnClient(client,self.warn_message)
+                        if client.maxLevel < 80: self._adminPlugin.warnClient(client,self.warn_message)
+                        else: client.message(self.warn_message)
+                    else: self._adminPlugin.warnClient(client,self.warn_message)
 
     def cmd_unlink(self, data, client, cmd = None):
         if not data:
             client.message('^7Incorrect command syntax. ^3!unlink y^7')
             return False
         if str(data) == 'y':
-            cursor = self.console.storage._query("select * from discod where b3_id = %s;"%(str(client.id)))
+            cursor = self.console.storage._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
             rows = cursor.getRow()
             if rows == {}:
                 client.message(self.notfound_message.format(invite=self.invite_link))
             else:
-                self.console.storage._query("delete from discod where b3_id = %s;"%(str(client.id)))
+                self.console.storage._query("DELETE FROM discod WHERE b3_id = %s;"%(str(client.id)))
                 cmd.sayLoudOrPM(client,"Unlinked your B3 ID from discod.")
-                self.debug("@%s unlinked"%(client.id))
      
     def cmd_linktest(self,data,client,cmd=None):
         if not data:
@@ -171,12 +185,56 @@ class DiscodPlugin(b3.plugin.Plugin):
             client2 = self._adminPlugin.findClientPrompt(inp[0],client)
             if client2:
                 self.getLinkStatus(client = client2, callerClient = client, cmd = cmd)
-    
-    
+
+    def cmd_getss(self,data,client=None,cmd=None):
+        if not data:
+            client.message("Invalid parameters")
+            return
+        input = self._adminPlugin.parseUserCmd(data)
+        sclient = self._adminPlugin.findClientPrompt(input[0], client)
+        if not sclient:
+            return
+        if not sclient.cid:
+            client.message("Invalid player")
+            return
+        client.message('Taking Screenshot of %s'%(sclient.name))
+        try:
+            self.Screenshot(sclient,client,True)
+        except:
+            return
+
+    def Screenshot(self,client,taker,notifycheck):
+        if notifycheck: strr = 'notify'
+        else: strr = 'dontnotify'
+        res = self.console.write("getss %s taker_slot_%s_%s_" % (client.cid,taker.cid,strr))
+        self.screenshots[client]=time.time()
+        return res
+
+    def cmd_resolution(self,data,client,cmd=None):
+        if not data:
+            client.message("Invalid parameters")
+            return
+        input = self._adminPlugin.parseUserCmd(data)
+        sclient = self._adminPlugin.findClientPrompt(input[0], client)
+        if not sclient:
+            return
+        if not sclient.cid:
+            client.message("Invalid player")
+            return
+        # checking for table 'discod_reso' onStartup
+        check = self.console.storage._query("SELECT * FROM discod_reso WHERE client_id = %s;"%(str(sclient.id)))
+        row = check.getOneRow()
+        if not row:
+            cmd.sayLoudOrPM(client,"Don't Know.")
+            self.Screenshot(sclient,client,False)
+            return
+        time = datetime.fromtimestamp(int(row['time_edit'])).strftime("%Y/%m/%d")
+        cmd.sayLoudOrPM(client,"^2%s ^7is playing at ^3%s, last checked %s"%(sclient.name,row['reso'],time))
+
     def getLinkStatus(self,client,callerClient=None,cmd=None):
         if not callerClient:
             callerClient = client
-        cursor = self.console.storage._query("select * from discod where b3_id = %s;"%(str(client.id)))
+        cursor = self.console.storage._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
         rows = cursor.getOneRow()
         if not rows:
             callerClient.message(self.notfound_message.format(invite=self.invite_link))
@@ -189,37 +247,31 @@ class DiscodPlugin(b3.plugin.Plugin):
                     for ch in rows['dc_tag']:
                         if not ch.isalnum() and not ch=="#" and not ch=="_" and not ch.isspace():
                             dc_tag+='?'
-                        else:
-                            dc_tag+=ch
-                time = (datetime.fromtimestamp(int(rows['linktime'])).strftime("%Y/%m/%d %H:%M:%S"))
+                        else: dc_tag+=ch
+                time = datetime.fromtimestamp(int(rows['linktime'])).strftime("%Y/%m/%d %H:%M")
                 cmd.sayLoudOrPM(callerClient,self.linktest_message.format(id=client.id, dc=dc_tag, time = time))
 
     def isLinked(self,client):
-        res = self.console.storage._query("select * from discod where b3_id = %s;"%client.id).getRow()
+        res = self.console.storage._query("SELECT * FROM discod WHERE b3_id = %s;"%client.id).getRow()
         if res == {}:
             return False
         else:
-            if res["linked"]==1:
-                return True
-            else:
-                return False
+            if res["linked"]==1: return True
+            else: return False
     
     def isDemoted(self,client):
-        try:
-            res = self.console.storage._query("select * from demotions where client_id = %s;"%client.id).getRow()
-            if res == {}:
-                return False
-            else:
-                if res["inactive"]==1:
-                    return False
-                else:
-                    return True
-        except _mysql.ProgrammingError:
-            #in case the demotions table doesn't exist
+        if not self.demotionsTableExists:
             return False
+        res = self.console.storage._query("SELECT * FROM demotions WHERE client_id = %s;"%client.id).getRow()
+        if res == {}:
+            return False
+        else:
+            if res["inactive"]==1: return False
+            else: return True
+
 
     def getKills(self,client):
-        res = self.console.storage._query("select * from xlr_playerstats where client_id = %s;"%client.id).getRow()
+        res = self.console.storage._query("SELECT * FROM xlr_playerstats WHERE client_id = %s;"%client.id).getRow()
         if res=={}:
             return None
         else:
@@ -247,8 +299,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         for i in range(ind,len(reqKills)):
             if cKills>=reqKills[i][1]:
                 killsGroup = reqKills[i][0]
-            else:
-                break
+            else: break
 
         group = Group(keyword=killsGroup)
 
@@ -280,21 +331,18 @@ class DiscodPlugin(b3.plugin.Plugin):
                     ind = i
 
         killsGroup = None
-        if ind == None:
-            return False
+        if ind == None: return False
         for i in range(ind,len(reqKills)):
             if cKills>=reqKills[i][1]:
                 killsGroup = reqKills[i+1][0]
-            else:
-                break
+            else: break
 
         group = Group(keyword=killsGroup)
 
         if group.keyword != cGroup:
             newGroup = self.console.storage.getGroup(group)
             return newGroup
-        else:
-            return None
+        else: return None
     
     def promoteClient(self,client,group):
         time.sleep(5)
@@ -312,6 +360,14 @@ class DiscodPlugin(b3.plugin.Plugin):
             client.message(self.autoPromotion_message.format(groupname=group.name,grouplevel=group.level))
         
     def onEvent(self,event):
+        client = event.client
+        if event.type == b3.events.EVT_CLIENT_DISCONNECT:
+            if client in self.screenshots:
+                self.debug(self.screenshots[client])
+                timediff = time.time() - self.screenshots[client]
+                if timediff < self.susinterval:
+                    self.console.say(self.ss_sus_announce % ("%s[^3@%s^7]" % (client.exactName,client.id), int(timediff)))
+                del self.screenshots[client]
         if event.type == b3.events.EVT_CLIENT_AUTH:
             if self.autoDemote==1:
                 if event.client.maxLevel>1:
@@ -324,21 +380,22 @@ class DiscodPlugin(b3.plugin.Plugin):
                         self.debug("demoted @%s to user for not linking their account"%event.client.id)
             if self.autoPromote==1:
                 promotion = self.getPromotion(client=event.client)
-                if promotion is None:
-                    return
+                if promotion is None: return
                 else:
                     thread = threading.Thread(target=self.promoteClient,args=(event.client,promotion),)
                     thread.start()
 
     def cmd_nok(self,data,client,cmd=None):
-        if data or not data:
-            res = self.getNextPromotion(client)
-            self.debug(res)
-            if res:
-                self.debug(self.reqKills[res.keyword])
-                self.debug(self.getKills(client))
-                killdiff = self.reqKills[res.keyword]-self.getKills(client)
-                if killdiff:
-                    cmd.sayLoudOrPM(client,self.config.get("responses","nok_message")%(killdiff,res.name,res.level))
-                    return
-            client.message("Your are not eligible for further promotion.")
+        if data:
+            inp = self._adminPlugin.parseUserCmd(data)
+            client2 = self._adminPlugin.findClientPrompt(inp[0],client)
+            if not client2: return
+        else: client2 = client
+        res = self.getNextPromotion(client2)
+        self.debug(res)
+        killdiff = None
+        if res: killdiff = self.reqKills[res.keyword]-self.getKills(client2)
+        if killdiff:
+            cmd.sayLoudOrPM(client,self.config.get("responses","nok_message")%(killdiff,res.name,res.level))
+            return
+        cmd.sayLoudOrPM(client,"Not eligible for further promotion.")
