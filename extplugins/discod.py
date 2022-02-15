@@ -71,6 +71,10 @@ class DiscodPlugin(b3.plugin.Plugin):
         self._query = self.console.storage._query
         self.curr_guidz = {}
         self.curr_ipz = {}
+
+        if self.check_duplicate==1:
+            refresh_thread = threading.Thread(target=self.refreshGuids)
+            refresh_thread.start()
   
         self._adminPlugin = self.console.getPlugin('admin')
         if not self._adminPlugin:
@@ -447,8 +451,8 @@ class DiscodPlugin(b3.plugin.Plugin):
     def checkDuplicate(self,client):
         if client.guid in self.curr_guidz:
             if(int(self.getCurrentPing(self.curr_guidz[client.guid]))==999 or int(self.getCurrentPing(self.curr_guidz[client.guid]))==0):
-                self.curr_guidz[client.guid].kick(self._adminPlugin.getReason('ci'), 'ci', client)
-                self.debug("kicked duplicate entry for %s cuz it was ci"%client.guid)
+                self.curr_guidz[client.guid].kick(self._adminPlugin.getReason('ci'), 'ci')
+                self.debug("kicked duplicate entry for %s cuz it was ci."%client.guid)
             else:
                 self.console.write("clientkick %s Duplicate GUID. Contact Admins."%client.cid)
                 self.sendDuplicate(client.guid,self.curr_guidz[client.guid],client,"GUID")
@@ -466,6 +470,15 @@ class DiscodPlugin(b3.plugin.Plugin):
             self.curr_ipz[client.ip]=client
             self.debug("unique ip address connected")
             self.debug(self.curr_ipz.keys())'''
+    
+    def refreshGuids(self):
+        while True:
+            plist = self.console.getPlayerList()
+            curr_guidz = [plist[ele]["guid"] for ele in plist]
+            for ele in self.curr_guidz.keys():
+                if ele not in curr_guidz:
+                    del self.curr_guidz[ele]
+                    self.debug("popped guid %s from cache cuz player is no longer online"%ele)
 
     def checkVpn(self,client):
         api_url = "https://api.xdefcon.com/proxy/check/?ip=%s"%client.ip
@@ -592,7 +605,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             steamid = self.getSteamID(client)
             self.debug(res["steam_id"])
             self.debug(str(steamid))
-            if str(res["steam_id"])==str(steamid):
+            if int(res["steam_id"])==int(steamid):
                 return
             else:
                 if len(str(res["steam_id"]))>len(str(steamid)):
