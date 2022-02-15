@@ -3,6 +3,9 @@ import b3.events
 import b3.plugin
 import time
 import threading
+import json
+import urllib2
+import requests
 from datetime import datetime
 from MySQLdb import _mysql
 from b3.clients import Group
@@ -23,6 +26,13 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.autoDemote = int(self.config.getint("settings","auto_demote"))
         self.invite_link = str(self.config.get("settings","invite_link"))
         self.susinterval = int(self.config.get("settings","susinterval"))
+        self.check_vpn = int(self.config.getint("settings","check_vpn"))
+        self.check_duplicate = int(self.config.getint("settings","check_vpn"))
+        self.auto_ss = int(self.config.getint("settings","check_vpn"))
+        self.store_misc = int(self.config.getint("settings","store_misc"))
+        self.webhookurl_duplicate = str(self.config.get("settings","webhookurl_duplicate"))
+        self.webhookurl_vpn_public = str(self.config.get("settings","webhookurl_vpn_public"))
+        self.webhookurl_vpn_private = str(self.config.get("settings","webhookurl_vpn_private"))
 
         #loading kills required
         self.reqKills = {}
@@ -58,62 +68,46 @@ class DiscodPlugin(b3.plugin.Plugin):
         global pluginInstance
         pluginInstance = self
         self.screenshots = {}
-        
+        self._query = self.console.storage._query
+        self.curr_guidz = {}
+        self.curr_ipz = {}
+  
         self._adminPlugin = self.console.getPlugin('admin')
         if not self._adminPlugin:
             self.debug('Could not find admin plugin')
             return False
 
-        # check if tables exist
-        tableCheck = self.console.storage._query("SHOW TABLES like 'discod'")
-        rows = tableCheck.getOneRow()
-        if rows == {}:
-            self.error("Required table for disCOD plugin doesn't exist")
-            return False
-
-        tableCheck = self.console.storage._query("SHOW TABLES like 'discod_reso'")
-        rows = tableCheck.getOneRow()
-        if rows == {}:
-            self.debug("'discod_reso' table does not exist")
-            self.resoTableExists = False
-        else: self.resoTableExists = True
-
-        tableCheck = self.console.storage._query("SHOW TABLES like 'demotions'")
-        rows = tableCheck.getOneRow()
-        if rows == {}:
-            self.debug("demotions does not exist")
-            self.demotionsTableExists = False
-        else: self.demotionsTableExists = True
-
-## works but cant get optional commands this way
-        # if 'commands' in self.config.sections():
-        #     for cmd in self.config.options('commands'):
-        #         level = self.config.get('commands', cmd)
-        #         sp = cmd.split('-')
-        #         alias = None
-        #         if len(sp) == 2: cmd, alias = sp
-        #         func = self.getCmd(cmd)
-        #         if func: self._adminPlugin.registerCommand(self, cmd, level, func, alias)
-
-        self._adminPlugin.registerCommand(self, "id", self.config.get('commands', "id"), self.cmd_id )
-        self._adminPlugin.registerCommand(self, "link", self.config.get('commands', "link"), self.cmd_link )
-        self._adminPlugin.registerCommand(self, "linktest", self.config.get('commands', "linktest"), self.cmd_linktest )
-        self._adminPlugin.registerCommand(self, "unlink", self.config.get('commands', "unlink"), self.cmd_unlink )
-        if self.autoPromote:
-            self._adminPlugin.registerCommand(self, "nok", self.config.get('commands', "nok"), self.cmd_nok )
-        if self.resoTableExists:
-            self._adminPlugin.registerCommand(self, "resolution", self.config.get('commands', "resolution"), self.cmd_resolution, "reso" )
-            self._adminPlugin.registerCommand(self, "getss", self.config.get('commands', "getss"), self.cmd_getss, "ss" )    
+        if 'commands' in self.config.sections():
+            for cmd in self.config.options('commands'):
+                level = self.config.get('commands', cmd)
+                sp = cmd.split('-')
+                alias = None
+                if len(sp) == 2: cmd, alias = sp
+                func = self.getCmd(cmd)
+                if func: self._adminPlugin.registerCommand(self, cmd, level, func, alias)
 
         self.registerEvent(b3.events.EVT_CLIENT_AUTH)
         self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
 
-    # def getCmd(self, cmd):
-    #     cmd = 'cmd_%s' % cmd
-    #     if hasattr(self, cmd):
-    #         func = getattr(self, cmd)
-    #         return func
-    #     return None
+        # check if tables exist
+        tableCheck = self._query("SHOW TABLES like 'discod'")
+        rows = tableCheck.getRow()
+        if rows == {}:
+            self.error("Required table for disCOD plugin doesn't exist")
+            return False
+        
+        tableCheck = self._query("SHOW TABLES like 'discod_clients_misc'")
+        rows = tableCheck.getRow()
+        if rows == {}:
+            self.error("Required table for client misc. data doesn't exist")
+            return False
+            
+    def getCmd(self, cmd):
+        cmd = 'cmd_%s' % cmd
+        if hasattr(self, cmd):
+            func = getattr(self, cmd)
+            return func
+        return None
 
     def cmd_id(self,data,client,cmd=None):
         if not data:
@@ -129,7 +123,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             client.message('^7Incorrect command syntax. ^3!link <8-digit-pin>^7 or type ^2!help link')
             return False
 
-        cursor = self.console.storage._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
+        cursor = self._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
         rows = cursor.getOneRow()
         if not rows:
             client.message(self.notfound_message.format(invite=self.invite_link))
@@ -140,8 +134,8 @@ class DiscodPlugin(b3.plugin.Plugin):
                 if linked == 1:
                     client.message(self.reattempt_message)
                     return False
-                self.console.storage._query("UPDATE discod SET linked = 1, linktime = UNIX_TIMESTAMP() WHERE b3_id = %s;"%(str(client.id)))
-                cursor = self.console.storage._query("SELECT dc_tag FROM discod WHERE b3_id = %s;"%(str(client.id)))
+                self._query("UPDATE discod SET linked = 1, linktime = UNIX_TIMESTAMP() WHERE b3_id = %s;"%(str(client.id)))
+                cursor = self._query("SELECT dc_tag FROM discod WHERE b3_id = %s;"%(str(client.id)))
                 rows = cursor.getOneRow()
                 if rows['dc_tag']:
                     dc_tag = ""
@@ -169,12 +163,12 @@ class DiscodPlugin(b3.plugin.Plugin):
             client.message('^7Incorrect command syntax. ^3!unlink y^7')
             return False
         if str(data) == 'y':
-            cursor = self.console.storage._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
+            cursor = self._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
             rows = cursor.getRow()
             if rows == {}:
                 client.message(self.notfound_message.format(invite=self.invite_link))
             else:
-                self.console.storage._query("DELETE FROM discod WHERE b3_id = %s;"%(str(client.id)))
+                self._query("DELETE FROM discod WHERE b3_id = %s;"%(str(client.id)))
                 cmd.sayLoudOrPM(client,"Unlinked your B3 ID from discod.")
      
     def cmd_linktest(self,data,client,cmd=None):
@@ -206,6 +200,9 @@ class DiscodPlugin(b3.plugin.Plugin):
     def Screenshot(self,client,taker,notifycheck):
         if notifycheck: strr = 'notify'
         else: strr = 'dontnotify'
+        if not taker:
+            self.console.write("getss %s" % (client.cid))
+            return
         res = self.console.write("getss %s taker_slot_%s_%s_" % (client.cid,taker.cid,strr))
         self.screenshots[client]=time.time()
         return res
@@ -222,7 +219,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             client.message("Invalid player")
             return
         # checking for table 'discod_reso' onStartup
-        check = self.console.storage._query("SELECT * FROM discod_reso WHERE client_id = %s;"%(str(sclient.id)))
+        check = self._query("SELECT * FROM discod_reso WHERE client_id = %s;"%(str(sclient.id)))
         row = check.getOneRow()
         if not row:
             cmd.sayLoudOrPM(client,"Don't Know.")
@@ -234,7 +231,7 @@ class DiscodPlugin(b3.plugin.Plugin):
     def getLinkStatus(self,client,callerClient=None,cmd=None):
         if not callerClient:
             callerClient = client
-        cursor = self.console.storage._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
+        cursor = self._query("SELECT * FROM discod WHERE b3_id = %s;"%(str(client.id)))
         rows = cursor.getOneRow()
         if not rows:
             callerClient.message(self.notfound_message.format(invite=self.invite_link))
@@ -252,7 +249,7 @@ class DiscodPlugin(b3.plugin.Plugin):
                 cmd.sayLoudOrPM(callerClient,self.linktest_message.format(id=client.id, dc=dc_tag, time = time))
 
     def isLinked(self,client):
-        res = self.console.storage._query("SELECT * FROM discod WHERE b3_id = %s;"%client.id).getRow()
+        res = self._query("SELECT * FROM discod WHERE b3_id = %s;"%client.id).getRow()
         if res == {}:
             return False
         else:
@@ -260,18 +257,19 @@ class DiscodPlugin(b3.plugin.Plugin):
             else: return False
     
     def isDemoted(self,client):
-        if not self.demotionsTableExists:
+        try:
+            res = self._query("SELECT * FROM demotions WHERE client_id = %s;"%client.id).getRow()
+            if res == {}:
+                return False
+            else:
+                if res["inactive"]==1: return False
+                else: return True
+        except _mysql.ProgrammingError:
+            #in case the demotions table doesn't exist
             return False
-        res = self.console.storage._query("SELECT * FROM demotions WHERE client_id = %s;"%client.id).getRow()
-        if res == {}:
-            return False
-        else:
-            if res["inactive"]==1: return False
-            else: return True
-
 
     def getKills(self,client):
-        res = self.console.storage._query("SELECT * FROM xlr_playerstats WHERE client_id = %s;"%client.id).getRow()
+        res = self._query("SELECT * FROM xlr_playerstats WHERE client_id = %s;"%client.id).getRow()
         if res=={}:
             return None
         else:
@@ -299,7 +297,8 @@ class DiscodPlugin(b3.plugin.Plugin):
         for i in range(ind,len(reqKills)):
             if cKills>=reqKills[i][1]:
                 killsGroup = reqKills[i][0]
-            else: break
+            else:
+                break
 
         group = Group(keyword=killsGroup)
 
@@ -368,7 +367,22 @@ class DiscodPlugin(b3.plugin.Plugin):
                 if timediff < self.susinterval:
                     self.console.say(self.ss_sus_announce % ("%s[^3@%s^7]" % (client.exactName,client.id), int(timediff)))
                 del self.screenshots[client]
+            if self.curr_guidz[client.guid].cid == event.client.cid:
+                del self.curr_guidz[client.guid]
+            '''if self.curr_ipz[client.ip].cid == event.client.cid:
+                del self.curr_ipz[client.ip]'''
         if event.type == b3.events.EVT_CLIENT_AUTH:
+            if self.store_misc==1:
+                misc_thread = threading.Thread(target=self.misc,args=(event.client,))
+                misc_thread.start()
+            if self.check_duplicate==1:
+                dup_thread = threading.Thread(target=self.checkDuplicate,args=(event.client,))
+                dup_thread.start()
+            if self.check_vpn==1:
+                vpn_thread = threading.Thread(target=self.checkVpn,args=(event.client,))
+                vpn_thread.start()
+            if self.auto_ss==1:
+                self.autoSS(event.client)
             if self.autoDemote==1:
                 if event.client.maxLevel>1:
                     if not self.isLinked(event.client):
@@ -379,6 +393,8 @@ class DiscodPlugin(b3.plugin.Plugin):
                         event.client.message(self.autoDemotion_message)
                         self.debug("demoted @%s to user for not linking their account"%event.client.id)
             if self.autoPromote==1:
+                if client.maxLevel<=2:
+                    return
                 promotion = self.getPromotion(client=event.client)
                 if promotion is None: return
                 else:
@@ -399,3 +415,188 @@ class DiscodPlugin(b3.plugin.Plugin):
             cmd.sayLoudOrPM(client,self.config.get("responses","nok_message")%(killdiff,res.name,res.level))
             return
         cmd.sayLoudOrPM(client,"Not eligible for further promotion.")
+    
+    def sendDuplicate(self,data,client1,client2,type):
+        embed = {
+            "title": "Duplicate %s"%type,
+            "description": "%s"%data,
+            "fields": [
+                {
+                    "name": "Client 1",
+                    "value": "%s [@%s] (%s)\n**IP:** %s\n**Steam ID:** %s"%(client1.name,client1.id,client1.cid,client1.ip,client1.var(self,"steam_id").toString()),
+                    "inline": False
+                },
+                {
+                    "name": "Client 2 (Kicked)",
+                    "value": "%s [@%s] (%s)\n**IP:** %s\n**Steam ID:** %s"%(client2.name,client2.id,client2.cid,client2.ip,client2.var(self,"steam_id").toString()),
+                    "inline": False
+                }
+            ]
+        }
+        data = json.dumps({"embeds": [embed]})        
+        req = urllib2.Request(self.webhookurl_duplicate, data, {
+            'Content-Type': 'application/json',
+            "User-Agent": "webhook"
+        })
+        try:
+            urllib2.urlopen(req)
+        except urllib2.HTTPError as ex:
+            self.debug("err pushing data")
+            self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
+
+    def checkDuplicate(self,client):
+        if client.guid in self.curr_guidz:
+            if(int(self.getCurrentPing(self.curr_guidz[client.guid]))==999 or int(self.getCurrentPing(self.curr_guidz[client.guid]))==0):
+                self.curr_guidz[client.guid].kick(self._adminPlugin.getReason('ci'), 'ci', client)
+                self.debug("kicked duplicate entry for %s cuz it was ci"%client.guid)
+            else:
+                self.console.write("clientkick %s Duplicate GUID. Contact Admins."%client.cid)
+                self.sendDuplicate(client.guid,self.curr_guidz[client.guid],client,"GUID")
+        else:
+            self.curr_guidz[client.guid]=client
+            self.debug("unique guid connected")
+            self.debug(self.curr_guidz.keys())
+
+        #checks for duplicate IP addresses but people can have same IPs for many reasons
+        '''
+        if client.ip in self.curr_ipz:
+            self.console.write("clientkick %s Duplicate IP Address. Contact Admins."%client.cid)
+            self.sendDuplicate(client.ip,self.curr_ipz[client.ip],client,"IP")
+        else:
+            self.curr_ipz[client.ip]=client
+            self.debug("unique ip address connected")
+            self.debug(self.curr_ipz.keys())'''
+
+    def checkVpn(self,client):
+        api_url = "https://api.xdefcon.com/proxy/check/?ip=%s"%client.ip
+        api_url2 = "http://ip-api.com/json/%s?fields=status,message,countryCode,regionName,isp,mobile,proxy,hosting"%client.ip
+        check1 = 'false'
+        check2 = 'false'
+        res = requests.get(api_url).json()
+        res2 = requests.get(api_url2).json()
+        if not res["success"]:
+            self.debug("cannot check vpn for IP of client %s @%s"%(client.name,client.id))
+            return
+        else:
+            row = self._query("select * from discod_vpn_allowed where client_id = %s;"%client.id).getOneRow()
+            if row=={} or row==None:
+                if res["proxy"]:
+                    check1 = "true"
+                if(res2["hosting"]==True or res2["proxy"]==True):
+                    check2 = "true"
+                if(res2["hosting"] or res2["proxy"]):
+                    check2 = "true"
+                    
+            if(check1=="false" and check2=="false"):
+                self.debug("%s @%s got no vpn - %s/%s"%(client.name,client.id,check1,check2))
+                return
+            else:
+                self.debug("%s @%s got vpn - %s/%s"%(client.name,client.id,check1,check2))
+                self.console.write("clientkick %s VPN detected. Ask admins over discord for permission. %s"%(client.cid,self.invite_link))
+                embed = {
+                        "title": "VPN Detected",
+                        "description": "%s **@%s**\nIP: **%s**"%(client.name,client.id,client.ip),
+                        "fields": [
+                        {
+                            "name": "API Response",
+                            "value": "*xdefcon*: %s\n*ip-api*: %s"%(check1.upper(),check2.upper()),
+                            "inline": "false"
+                        },
+                        {
+                            "name": "ISP",
+                            "value": res2["isp"],
+                            "inline": "true"
+                        },
+                        {
+                            "name": "Location",
+                            "value": "%s, %s"%(res2["regionName"],res2["countryCode"]),
+                            "inline": "true"
+                        }
+                    ]
+                    }
+                data = json.dumps({"embeds": [embed]})        
+                req = urllib2.Request(self.webhookurl_vpn_private, data, {
+                    'Content-Type': 'application/json',
+                    "User-Agent": "webhook"
+                })
+                try:
+                    urllib2.urlopen(req)
+                except urllib2.HTTPError as ex:
+                    self.debug("err pushing data")
+                    self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
+                embed = {
+                        "title": "VPN Detected",
+                        "description": "%s **@%s**"%(client.name,client.id),
+                }
+                data = json.dumps({"embeds": [embed]})        
+                req = urllib2.Request(self.webhookurl_vpn_public, data, {
+                    'Content-Type': 'application/json',
+                    "User-Agent": "webhook"
+                })
+                try:
+                    urllib2.urlopen(req)
+                except urllib2.HTTPError as ex:
+                    self.debug("err pushing data")
+                    self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
+    
+    def autoSS(self,client):
+        if client.maxLevel<20:
+            self.Screenshot(client,taker=None,notifycheck=False)
+    
+    def getCurrentPing(self,client):
+        res = self.console.write("status")
+        lis = [ele.split() for ele in res.split("\n")]
+        ind = 0
+        for ele in lis:
+            try:
+                if ele[0]=="num" and ele[1]=="score":
+                    ind = lis.index(ele)
+            except IndexError:
+                continue
+        for i in range(ind+2,len(lis)-1):
+            try:
+                if client.guid in lis[i]:
+                    return(lis[i][lis[i].index(client.guid)-1])
+            except IndexError:
+                continue
+    
+    def getSteamID(self,client):
+        res = self.console.write("status")
+        lis = [ele.split() for ele in res.split("\n")]
+        ind = 0
+        for ele in lis:
+            try:
+                if ele[0]=="num" and ele[1]=="score":
+                    ind = lis.index(ele)
+            except IndexError:
+                continue
+        for i in range(ind+2,len(lis)-1):
+            try:
+                if client.guid in lis[i]:
+                    return(lis[i][lis[i].index(client.guid)+1])
+            except IndexError:
+                continue
+    
+    def misc(self,client):
+        res = self._query("select * from discod_clients_misc where client_id = %s;"%client.id).getOneRow()
+        self.debug(res)
+        if res=={} or res==None:
+            steamid = self.getSteamID(client)
+            if str(steamid) == "0":
+                self._query("insert into discod_clients_misc (client_id,time_add,time_edit) values (%s,unix_timestamp(),unix_timestamp())"%(client.id))
+                self.debug("inserted steam id for client %s"%client.id)
+            else:
+                self._query("insert into discod_clients_misc (client_id,steam_id,time_add,time_edit) values (%s,%s,unix_timestamp(),unix_timestamp())"%(client.id,steamid))
+                self.debug("inserted steam id for client %s"%client.id)
+        else:
+            steamid = self.getSteamID(client)
+            self.debug(res["steam_id"])
+            self.debug(str(steamid))
+            if str(res["steam_id"])==str(steamid):
+                return
+            else:
+                if len(str(res["steam_id"]))>len(str(steamid)):
+                    return False
+                self._query("update discod_clients_misc set steam_id = %s, time_edit = unix_timestamp() where client_id = %s;"%(steamid,client.id))
+                self.debug("updated steam id for client %s"%client.id)
+        client.setvar(self,"steam_id",self._query("select * from discod_clients_misc where client_id = %s"%(event.client.id)).getOneRow()["steam_id"])
