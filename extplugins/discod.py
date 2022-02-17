@@ -74,6 +74,7 @@ class DiscodPlugin(b3.plugin.Plugin):
 
         if self.check_duplicate==1:
             refresh_thread = threading.Thread(target=self.refreshGuids)
+            refresh_thread.daemon = True
             refresh_thread.start()
   
         self._adminPlugin = self.console.getPlugin('admin')
@@ -479,6 +480,7 @@ class DiscodPlugin(b3.plugin.Plugin):
                 if ele not in curr_guidz:
                     del self.curr_guidz[ele]
                     self.debug("popped guid %s from cache cuz player is no longer online"%ele)
+            time.sleep(10)
 
     def checkVpn(self,client):
         api_url = "https://api.xdefcon.com/proxy/check/?ip=%s"%client.ip
