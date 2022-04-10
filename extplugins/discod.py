@@ -5,9 +5,11 @@ import time
 import threading
 import json
 import urllib2
+import os
 import requests
 from datetime import datetime
 from MySQLdb import _mysql
+import MySQLdb
 from b3.clients import Group
 
 pluginInstance = None
@@ -27,8 +29,8 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.invite_link = str(self.config.get("settings","invite_link"))
         self.susinterval = int(self.config.get("settings","susinterval"))
         self.check_vpn = int(self.config.getint("settings","check_vpn"))
-        self.check_duplicate = int(self.config.getint("settings","check_vpn"))
-        self.auto_ss = int(self.config.getint("settings","check_vpn"))
+        self.check_duplicate = int(self.config.getint("settings","check_duplicate"))
+        self.auto_ss = int(self.config.getint("settings","auto_ss"))
         self.store_misc = int(self.config.getint("settings","store_misc"))
         self.webhookurl_duplicate = str(self.config.get("settings","webhookurl_duplicate"))
         self.webhookurl_vpn_public = str(self.config.get("settings","webhookurl_vpn_public"))
@@ -224,13 +226,13 @@ class DiscodPlugin(b3.plugin.Plugin):
             client.message("Invalid player")
             return
         # checking for table 'discod_reso' onStartup
-        check = self._query("SELECT * FROM discod_reso WHERE client_id = %s;"%(str(sclient.id)))
+        check = self._query("SELECT * FROM discod_clients_misc WHERE client_id = %s;"%(str(sclient.id)))
         row = check.getOneRow()
         if not row:
             cmd.sayLoudOrPM(client,"Don't Know.")
             self.Screenshot(sclient,client,False)
             return
-        time = datetime.fromtimestamp(int(row['time_edit'])).strftime("%Y/%m/%d")
+        time = datetime.fromtimestamp(int(row['time_edit'])).strftime("%d/%m/%Y")
         cmd.sayLoudOrPM(client,"^2%s ^7is playing at ^3%s, last checked %s"%(sclient.name,row['reso'],time))
 
     def getLinkStatus(self,client,callerClient=None,cmd=None):
@@ -387,7 +389,9 @@ class DiscodPlugin(b3.plugin.Plugin):
                 vpn_thread = threading.Thread(target=self.checkVpn,args=(event.client,))
                 vpn_thread.start()
             if self.auto_ss==1:
-                self.autoSS(event.client)
+                # self.autoSS(event.client)
+                ss_thread = threading.Thread(target=self.autoSS,args=(event.client,))
+                ss_thread.start()
             if self.autoDemote==1:
                 if event.client.maxLevel>1:
                     if not self.isLinked(event.client):
@@ -398,7 +402,7 @@ class DiscodPlugin(b3.plugin.Plugin):
                         event.client.message(self.autoDemotion_message)
                         self.debug("demoted @%s to user for not linking their account"%event.client.id)
             if self.autoPromote==1:
-                if client.maxLevel<=2:
+                if event.client.maxLevel == 0:
                     return
                 promotion = self.getPromotion(client=event.client)
                 if promotion is None: return
@@ -420,6 +424,40 @@ class DiscodPlugin(b3.plugin.Plugin):
             cmd.sayLoudOrPM(client,self.config.get("responses","nok_message")%(killdiff,res.name,res.level))
             return
         cmd.sayLoudOrPM(client,"Not eligible for further promotion.")
+    
+    def cmd_allowvpn(self,data,client,cmd=None):
+        if self.check_vpn != 1:
+            client.message("VPN not being checked.")
+        if not data:
+            client.message("Invalid parameters.")
+            return
+        if data:
+            inp = self._adminPlugin.parseUserCmd(data)
+            client2 = self._adminPlugin.findClientPrompt(inp[0],client)
+            if not client2: return
+        res = self._query("select * from discod_vpn_allowed where client_id = %s"%client2.id).getOneRow()
+        self.debug(res)
+        if res == {} or res == None:
+            self._query("insert into discod_vpn_allowed (client_id) values (%s);"%client2.id)
+            cmd.sayLoudOrPM(client,"%s has been allowed to use VPN."%client2.name)
+            embed = {
+                    "title": "VPN allowed",
+                    "description": "%s **@%s**\nAdmin: %s **%s**"%(client2.name,client2.id,client.name,client.id)
+                }
+            data = json.dumps({"embeds": [embed]})        
+            req = urllib2.Request(self.webhookurl_vpn_private, data, {
+                'Content-Type': 'application/json',
+                "User-Agent": "webhook"
+            })
+            self.unblockVpn(client2)
+            try:
+                urllib2.urlopen(req)
+            except urllib2.HTTPError as ex:
+                self.debug("err pushing data")
+                self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
+        else:
+            cmd.sayLoudOrPM(client,"Already allowed.")
+
     
     def sendDuplicate(self,data,client1,client2,type):
         embed = {
@@ -451,10 +489,15 @@ class DiscodPlugin(b3.plugin.Plugin):
 
     def checkDuplicate(self,client):
         if client.guid in self.curr_guidz:
-            if(int(self.getCurrentPing(self.curr_guidz[client.guid]))==999 or int(self.getCurrentPing(self.curr_guidz[client.guid]))==0):
+            _ping = int(self.getCurrentPing(self.curr_guidz[client.guid]))
+            self.debug("PEEEENG: %s"%_ping)
+            if(_ping == 0 or _ping == 999):
                 self.curr_guidz[client.guid].kick(self._adminPlugin.getReason('ci'), 'ci')
                 self.debug("kicked duplicate entry for %s cuz it was ci."%client.guid)
             else:
+                plist = self.console.getPlayerList()
+                for ele in plist:
+                    self.debug(plist[ele])
                 self.console.write("clientkick %s Duplicate GUID. Contact Admins."%client.cid)
                 self.sendDuplicate(client.guid,self.curr_guidz[client.guid],client,"GUID")
         else:
@@ -482,50 +525,101 @@ class DiscodPlugin(b3.plugin.Plugin):
                     self.debug("popped guid %s from cache cuz player is no longer online"%ele)
             time.sleep(10)
 
-    def checkVpn(self,client):
-        api_url = "https://api.xdefcon.com/proxy/check/?ip=%s"%client.ip
-        api_url2 = "http://ip-api.com/json/%s?fields=status,message,countryCode,regionName,isp,mobile,proxy,hosting"%client.ip
-        check1 = 'false'
-        check2 = 'false'
-        res = requests.get(api_url).json()
-        res2 = requests.get(api_url2).json()
-        if not res["success"]:
-            self.debug("cannot check vpn for IP of client %s @%s"%(client.name,client.id))
+    def blockVpn(self,client):
+        os.system("sudo iptables -I INPUT -s %s -j DROP"%client.ip)
+        self.debug("IP %s added to iptables"%client.ip)
+    
+    def unblockVpn(self,client):
+        data = os.popen("iptables -L INPUT -v -n").read()
+        hehe = [ele.split() for ele in data.split("\n")]
+        drop_ipz = []
+        for ele in hehe:
+            try:
+                if ele[2]=="DROP":
+                    drop_ipz.append(ele[7])
+            except IndexError:
+                continue
+        self.debug(drop_ipz)
+        self.debug(client.ip)
+        if client.ip not in drop_ipz:
+            self.debug("IP didn't exist in iptables")
             return
         else:
+            os.system("sudo iptables -D INPUT -s %s -j DROP"%client.ip)
+            self.debug("Removed IP %s from iptables"%client.ip)
+
+    def checkVpn(self,client):
+        api_url1 = "https://api.xdefcon.com/proxy/check/?ip=%s"%client.ip
+        api_url2 = "http://ip-api.com/json/%s?fields=status,message,country,countryCode,region,regionName,city,timezone,isp,org,proxy,hosting"%client.ip
+        # api_url3 = "https://check.getipintel.net/check.php?ip=%s&contact=haha@hehe.com"%client.ip
+        api_url4 = "https://ipqualityscore.com/api/json/ip/<api-key-here>/%s"%client.ip
+        check1 = '**false**'
+        check2 = '**false**'
+        check3 = '**false**'
+        check4 = '**false**'
+        res1 = requests.get(api_url1).json()
+        res2 = requests.get(api_url2).json()
+        # res3 = requests.get(api_url3)
+        count = 0
+        self.debug(res1)
+        self.debug(res2)
+        if True:
             row = self._query("select * from discod_vpn_allowed where client_id = %s;"%client.id).getOneRow()
             if row=={} or row==None:
-                if res["proxy"]:
-                    check1 = "true"
-                if(res2["hosting"]==True or res2["proxy"]==True):
-                    check2 = "true"
-                if(res2["hosting"] or res2["proxy"]):
-                    check2 = "true"
+                if not res1["success"]:
+                    check1 = "**not checked**"
+                elif res1["proxy"]:
+                    check1 = "**true**"
+                    count+=1
+                if res2["status"]!="success":
+                    check2 = "**not checked**"
+                elif res2["hosting"] or res2["proxy"]:
+                    check2 = "**true**"
+                    count+=1
+                # if float(res3.content)<0:
+                    # check3 = "**not checked**"
+                # elif(float(res3.content)>0.75):
+                    # check3 = "**true** (**%s%%**)"%(float(res3.content)*100)
+                    # count+=1
+                if count!=0:
+                    res4 = requests.get(api_url4).json()
+                    self.debug(res4)
+                    if not res4["success"]:
+                        check4 = "**not checked**"
+                    else:
+                        if res4["vpn"]:
+                            check4 = "**true**"
+                            count+=1
                     
-            if(check1=="false" and check2=="false"):
-                self.debug("%s @%s got no vpn - %s/%s"%(client.name,client.id,check1,check2))
+            if(count == 0):
+                self.debug("%s @%s got no vpn"%(client.name,client.id))
                 return
             else:
-                self.debug("%s @%s got vpn - %s/%s"%(client.name,client.id,check1,check2))
-                self.console.write("clientkick %s VPN detected. Ask admins over discord for permission. %s"%(client.cid,self.invite_link))
+                self.debug("%s @%s got vpn"%(client.name,client.id))
                 embed = {
                         "title": "VPN Detected",
                         "description": "%s **@%s**\nIP: **%s**"%(client.name,client.id,client.ip),
+                        "color": 0x4a1e44,
                         "fields": [
                         {
                             "name": "API Response",
-                            "value": "*xdefcon*: %s\n*ip-api*: %s"%(check1.upper(),check2.upper()),
-                            "inline": "false"
+                            "value": "*xdefcon:* %s\n*ip-api:* %s\n*ipqualityscore:* %s"%(check1.upper(),check2.upper(),check4.upper()),
+                            "inline": False
                         },
                         {
                             "name": "ISP",
                             "value": res2["isp"],
-                            "inline": "true"
+                            "inline": True
                         },
                         {
                             "name": "Location",
-                            "value": "%s, %s"%(res2["regionName"],res2["countryCode"]),
-                            "inline": "true"
+                            "value": "%s, %s (%s)"%(res2["city"],res2["regionName"],res2["countryCode"]),
+                            "inline": True
+                        },
+                        {
+                            "name": "Organization",
+                            "value": "%s"%(res2["org"]),
+                            "inline": True
                         }
                     ]
                     }
@@ -539,9 +633,11 @@ class DiscodPlugin(b3.plugin.Plugin):
                 except urllib2.HTTPError as ex:
                     self.debug("err pushing data")
                     self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
+                
+                self.console.write("clientkick %s VPN detected. Ask admins over discord for permission. %s"%(client.cid,self.invite_link))
                 embed = {
                         "title": "VPN Detected",
-                        "description": "%s **@%s**"%(client.name,client.id),
+                        "description": "%s **@%s**"%(client.name,client.id)
                 }
                 data = json.dumps({"embeds": [embed]})        
                 req = urllib2.Request(self.webhookurl_vpn_public, data, {
@@ -553,8 +649,11 @@ class DiscodPlugin(b3.plugin.Plugin):
                 except urllib2.HTTPError as ex:
                     self.debug("err pushing data")
                     self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
-    
+                if count>=2:
+                    self.blockVpn(client)
+
     def autoSS(self,client):
+        time.sleep(10)	
         if client.maxLevel<20:
             self.Screenshot(client,taker=None,notifycheck=False)
     
@@ -570,8 +669,8 @@ class DiscodPlugin(b3.plugin.Plugin):
                 continue
         for i in range(ind+2,len(lis)-1):
             try:
-                if client.guid in lis[i]:
-                    return(lis[i][lis[i].index(client.guid)-1])
+                if client.cid == lis[i][0]:
+                    return(lis[i][lis[i].index(client.cid)+2])
             except IndexError:
                 continue
     
@@ -614,4 +713,4 @@ class DiscodPlugin(b3.plugin.Plugin):
                     return False
                 self._query("update discod_clients_misc set steam_id = %s, time_edit = unix_timestamp() where client_id = %s;"%(steamid,client.id))
                 self.debug("updated steam id for client %s"%client.id)
-        client.setvar(self,"steam_id",self._query("select * from discod_clients_misc where client_id = %s"%(event.client.id)).getOneRow()["steam_id"])
+        client.setvar(self,"steam_id",self._query("select * from discod_clients_misc where client_id = %s"%(client.id)).getOneRow()["steam_id"])
