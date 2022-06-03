@@ -35,6 +35,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.webhookurl_duplicate = str(self.config.get("settings","webhookurl_duplicate"))
         self.webhookurl_vpn_public = str(self.config.get("settings","webhookurl_vpn_public"))
         self.webhookurl_vpn_private = str(self.config.get("settings","webhookurl_vpn_private"))
+        self.confpath = str(self.config.getpath("settings","confpath"))
 
         #loading kills required
         self.reqKills = {}
@@ -97,17 +98,28 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
 
         # check if tables exist
-        tableCheck = self._query("SHOW TABLES like 'discod'")
-        rows = tableCheck.getRow()
-        if rows == {}:
-            self.error("Required table for disCOD plugin doesn't exist")
-            return False
-        
         tableCheck = self._query("SHOW TABLES like 'discod_clients_misc'")
         rows = tableCheck.getRow()
         if rows == {}:
-            self.error("Required table for client misc. data doesn't exist")
-            return False
+            self.error("Required table \"disCOD\" doesn't exist. Querying table schema...")
+            query = open(self.confpath+"\\discod.sql").read().replace("\n","")
+            self._query(query)
+
+        if self.store_misc==1:
+            tableCheck = self._query("SHOW TABLES like 'discod_clients_misc'")
+            rows = tableCheck.getRow()
+            if rows == {}:
+                self.error("Required table for client misc. data doesn't exist. Querying table schema...")
+                query = open(self.confpath+"\\discod_clients_misc.sql").read().replace("\n","")
+                self._query(query)
+
+        if self.check_vpn==1:
+            tableCheck = self._query("SHOW TABLES like 'discod_vpn_allowed'")
+            rows = tableCheck.getRow()
+            if rows == {}:
+                self.error("Required table for VPN IDs doesn't exist. Querying table schema...")
+                query = open(self.confpath+"\\discod_vpn_allowed.sql").read().replace("\n","")
+                self._query(query)
             
     def getCmd(self, cmd):
         cmd = 'cmd_%s' % cmd
@@ -634,22 +646,22 @@ class DiscodPlugin(b3.plugin.Plugin):
                     self.debug("err pushing data")
                     self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
                 
-                self.console.write("clientkick %s VPN detected. Ask admins over discord for permission. %s"%(client.cid,self.invite_link))
-                embed = {
-                        "title": "VPN Detected",
-                        "description": "%s **@%s**"%(client.name,client.id)
-                }
-                data = json.dumps({"embeds": [embed]})        
-                req = urllib2.Request(self.webhookurl_vpn_public, data, {
-                    'Content-Type': 'application/json',
-                    "User-Agent": "webhook"
-                })
                 try:
                     urllib2.urlopen(req)
                 except urllib2.HTTPError as ex:
                     self.debug("err pushing data")
                     self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
                 if count>=2:
+                    self.console.write("clientkick %s VPN detected. Ask admins over discord for permission. %s"%(client.cid,self.invite_link))
+                    embed = {
+                            "title": "VPN Detected",
+                            "description": "%s **@%s**"%(client.name,client.id)
+                    }
+                    data = json.dumps({"embeds": [embed]})        
+                    req = urllib2.Request(self.webhookurl_vpn_public, data, {
+                        'Content-Type': 'application/json',
+                        "User-Agent": "webhook"
+                    })
                     self.blockVpn(client)
 
     def autoSS(self,client):
