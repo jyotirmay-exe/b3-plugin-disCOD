@@ -11,4 +11,4 @@ CREATE TABLE `discod` (
   UNIQUE KEY `id` (`id`),
   UNIQUE KEY `b3_id` (`b3_id`),
   UNIQUE KEY `dc_id` (`dc_id`)
-) ENGINE=MyISAM AUTO_INCREMENT=68 DEFAULT CHARSET=utf8mb4;
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4
