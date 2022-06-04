@@ -35,7 +35,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.webhookurl_duplicate = str(self.config.get("settings","webhookurl_duplicate"))
         self.webhookurl_vpn_public = str(self.config.get("settings","webhookurl_vpn_public"))
         self.webhookurl_vpn_private = str(self.config.get("settings","webhookurl_vpn_private"))
-        self.confpath = str(self.config.getpath("settings","confpath"))
+        self.sqlpath = str(self.config.getpath("settings","sqlpath"))
 
         #loading kills required
         self.reqKills = {}
@@ -102,7 +102,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         rows = tableCheck.getRow()
         if rows == {}:
             self.error("Required table \"disCOD\" doesn't exist. Querying table schema...")
-            query = open(self.confpath+"\\discod.sql").read().replace("\n","")
+            query = open(self.sqlpath+"\\discod.sql").read().replace("\n","")
             self._query(query)
 
         if self.store_misc==1:
@@ -110,7 +110,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             rows = tableCheck.getRow()
             if rows == {}:
                 self.error("Required table for client misc. data doesn't exist. Querying table schema...")
-                query = open(self.confpath+"\\discod_clients_misc.sql").read().replace("\n","")
+                query = open(self.sqlpath+"\\discod_clients_misc.sql").read().replace("\n","")
                 self._query(query)
 
         if self.check_vpn==1:
@@ -118,7 +118,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             rows = tableCheck.getRow()
             if rows == {}:
                 self.error("Required table for VPN IDs doesn't exist. Querying table schema...")
-                query = open(self.confpath+"\\discod_vpn_allowed.sql").read().replace("\n","")
+                query = open(self.sqlpath+"\\discod_vpn_allowed.sql").read().replace("\n","")
                 self._query(query)
             
     def getCmd(self, cmd):
