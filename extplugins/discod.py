@@ -234,9 +234,6 @@ class DiscodPlugin(b3.plugin.Plugin):
         sclient = self._adminPlugin.findClientPrompt(input[0], client)
         if not sclient:
             return
-        if not sclient.cid:
-            client.message("Invalid player")
-            return
         # checking for table 'discod_reso' onStartup
         check = self._query("SELECT * FROM discod_clients_misc WHERE client_id = %s;"%(str(sclient.id)))
         row = check.getOneRow()
@@ -245,7 +242,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             self.Screenshot(sclient,client,False)
             return
         time = datetime.fromtimestamp(int(row['time_edit'])).strftime("%d/%m/%Y")
-        cmd.sayLoudOrPM(client,"^2%s ^7is playing at ^3%s, last checked %s"%(sclient.name,row['reso'],time))
+        cmd.sayLoudOrPM(client,"^2%s ^7is playing at ^3%s^7, last checked ^3%s"%(sclient.name,row['reso'],time))
 
     def getLinkStatus(self,client,callerClient=None,cmd=None):
         if not callerClient:
