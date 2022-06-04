@@ -24,3 +24,7 @@ B3 Plugin for [disCOD](https://github.com/Zoro-6191/disCOD)
     discod: @conf/plugin_discod.ini
     ```
 - Restart B3
+---
+**NOTE: If your B3 is running on a MySQL server, the required modules should be preinstallled. However in some cases they may not be. If you get any such errors, it may be because of the `MySQLdb` module. To fix it, in your terminal:**
+- **For Linux:** `sudo apt-get install python-mysqldb`
+- **For Windows:** `pip install mysql-python`
