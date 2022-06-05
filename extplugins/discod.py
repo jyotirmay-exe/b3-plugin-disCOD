@@ -98,28 +98,37 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
 
         # check if tables exist
-        tableCheck = self._query("SHOW TABLES like 'discod_clients_misc'")
+        tableCheck = self._query("SHOW TABLES like 'discod'")
         rows = tableCheck.getRow()
         if rows == {}:
-            self.error("Required table \"disCOD\" doesn't exist. Querying table schema...")
-            query = open(self.sqlpath+"\\discod.sql").read().replace("\n","")
-            self._query(query)
+            if self.create_table:
+                self.error("Required table \"disCOD\" doesn't exist. Querying table schema...")
+                query = open(self.sqlpath+"\\discod.sql").read().replace("\n","")
+                self._query(query)
+        else:
+            self.debug("Required table 'disCOD' exists.")
 
         if self.store_misc==1:
             tableCheck = self._query("SHOW TABLES like 'discod_clients_misc'")
             rows = tableCheck.getRow()
             if rows == {}:
-                self.error("Required table for client misc. data doesn't exist. Querying table schema...")
-                query = open(self.sqlpath+"\\discod_clients_misc.sql").read().replace("\n","")
-                self._query(query)
+                if self.create_table:
+                    self.error("Required table for client misc. data doesn't exist. Querying table schema...")
+                    query = open(self.sqlpath+"\\discod_clients_misc.sql").read().replace("\n","")
+                    self.console.storage.query(query)
+            else:
+                self.debug("Required table for client misc. data exists.")
 
         if self.check_vpn==1:
             tableCheck = self._query("SHOW TABLES like 'discod_vpn_allowed'")
             rows = tableCheck.getRow()
             if rows == {}:
-                self.error("Required table for VPN IDs doesn't exist. Querying table schema...")
-                query = open(self.sqlpath+"\\discod_vpn_allowed.sql").read().replace("\n","")
-                self._query(query)
+                if self.create_table:
+                    self.error("Required table for VPN IDs doesn't exist. Querying table schema...")
+                    query = open(self.sqlpath+"\\discod_vpn_allowed.sql").read().replace("\n","")
+                    self._query(query)
+            else:
+                self.debug("Required table for VPN IDs exists.")
             
     def getCmd(self, cmd):
         cmd = 'cmd_%s' % cmd
@@ -234,6 +243,9 @@ class DiscodPlugin(b3.plugin.Plugin):
         sclient = self._adminPlugin.findClientPrompt(input[0], client)
         if not sclient:
             return
+        if not sclient.cid:
+            client.message("Invalid player")
+            return
         # checking for table 'discod_reso' onStartup
         check = self._query("SELECT * FROM discod_clients_misc WHERE client_id = %s;"%(str(sclient.id)))
         row = check.getOneRow()
@@ -242,7 +254,7 @@ class DiscodPlugin(b3.plugin.Plugin):
             self.Screenshot(sclient,client,False)
             return
         time = datetime.fromtimestamp(int(row['time_edit'])).strftime("%d/%m/%Y")
-        cmd.sayLoudOrPM(client,"^2%s ^7is playing at ^3%s^7, last checked ^3%s"%(sclient.name,row['reso'],time))
+        cmd.sayLoudOrPM(client,"^2%s ^7is playing at ^3%s, last checked %s"%(sclient.name,row['reso'],time))
 
     def getLinkStatus(self,client,callerClient=None,cmd=None):
         if not callerClient:
