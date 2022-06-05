@@ -1,4 +1,4 @@
-CREATE TABLE `discod` (
+CREATE TABLE IF NOT EXISTS `discod` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `b3_id` int(11) NOT NULL,
   `dc_id` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',

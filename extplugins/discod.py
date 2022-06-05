@@ -98,28 +98,37 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
 
         # check if tables exist
-        tableCheck = self._query("SHOW TABLES like 'discod_clients_misc'")
+        tableCheck = self._query("SHOW TABLES like 'discod'")
         rows = tableCheck.getRow()
         if rows == {}:
-            self.error("Required table \"disCOD\" doesn't exist. Querying table schema...")
-            query = open(self.sqlpath+"\\discod.sql").read().replace("\n","")
-            self._query(query)
+            if self.create_table:
+                self.error("Required table \"disCOD\" doesn't exist. Querying table schema...")
+                query = open(self.sqlpath+"\\discod.sql").read().replace("\n","")
+                self._query(query)
+        else:
+            self.debug("Required table 'disCOD' exists.")
 
         if self.store_misc==1:
             tableCheck = self._query("SHOW TABLES like 'discod_clients_misc'")
             rows = tableCheck.getRow()
             if rows == {}:
-                self.error("Required table for client misc. data doesn't exist. Querying table schema...")
-                query = open(self.sqlpath+"\\discod_clients_misc.sql").read().replace("\n","")
-                self._query(query)
+                if self.create_table:
+                    self.error("Required table for client misc. data doesn't exist. Querying table schema...")
+                    query = open(self.sqlpath+"\\discod_clients_misc.sql").read().replace("\n","")
+                    self.console.storage.query(query)
+            else:
+                self.debug("Required table for client misc. data exists.")
 
         if self.check_vpn==1:
             tableCheck = self._query("SHOW TABLES like 'discod_vpn_allowed'")
             rows = tableCheck.getRow()
             if rows == {}:
-                self.error("Required table for VPN IDs doesn't exist. Querying table schema...")
-                query = open(self.sqlpath+"\\discod_vpn_allowed.sql").read().replace("\n","")
-                self._query(query)
+                if self.create_table:
+                    self.error("Required table for VPN IDs doesn't exist. Querying table schema...")
+                    query = open(self.sqlpath+"\\discod_vpn_allowed.sql").read().replace("\n","")
+                    self._query(query)
+            else:
+                self.debug("Required table for VPN IDs exists.")
             
     def getCmd(self, cmd):
         cmd = 'cmd_%s' % cmd

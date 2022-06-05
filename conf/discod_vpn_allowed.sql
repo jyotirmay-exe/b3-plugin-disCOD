@@ -1,4 +1,4 @@
-CREATE TABLE `discod_vpn_allowed` (
+CREATE TABLE IF NOT EXISTS `discod_vpn_allowed` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `client_id` int(11) NOT NULL,
   PRIMARY KEY (`id`),

@@ -1,4 +1,4 @@
-CREATE TABLE `discod_clients_misc` (
+CREATE TABLE IF NOT EXISTS `discod_clients_misc` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `client_id` int(11) NOT NULL,
   `steam_id` varchar(36) DEFAULT '0',
