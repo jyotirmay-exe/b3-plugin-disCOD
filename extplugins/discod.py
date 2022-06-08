@@ -36,6 +36,13 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.webhookurl_vpn_public = str(self.config.get("settings","webhookurl_vpn_public"))
         self.webhookurl_vpn_private = str(self.config.get("settings","webhookurl_vpn_private"))
         self.sqlpath = str(self.config.getpath("settings","sqlpath"))
+        self.chatlog = self.config.getint("settings","chatlog")
+        if self.chatlog:
+            self.debug("chat logging to discord enabled.")
+            self.webhookurl_chatlog = str(self.config.get("settings","webhookurl_chatlog"))
+            self.debug("will log chats @ %s"%self.webhookurl_chatlog)
+        else:
+            pass
 
         #loading kills required
         self.reqKills = {}
