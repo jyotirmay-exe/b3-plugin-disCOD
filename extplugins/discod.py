@@ -14,6 +14,12 @@ from b3.clients import Group
 
 pluginInstance = None
 
+class chatLogger:
+    def __init__(self,url):
+        self.url = url
+    def log(self,author,msg):
+        pass
+
 class DiscodPlugin(b3.plugin.Plugin):
 
     requiresConfigFile = True
@@ -39,6 +45,7 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.chatlog = self.config.getint("settings","chatlog")
         if self.chatlog:
             self.debug("chat logging to discord enabled.")
+            self.chatLogger = chatLogger(self.webhookurl_chatlog)
             self.webhookurl_chatlog = str(self.config.get("settings","webhookurl_chatlog"))
             self.debug("will log chats @ %s"%self.webhookurl_chatlog)
         else:
