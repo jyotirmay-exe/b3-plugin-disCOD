@@ -18,7 +18,16 @@ class chatLogger:
     def __init__(self,url):
         self.url = url
     def log(self,author,msg):
-        pass
+        data = json.dumps({"content":"**%s:** %s"%(author.name,msg)})        
+        req = urllib2.Request(self.url, data, {
+            'Content-Type': 'application/json',
+            "User-Agent": "webhook"
+        })
+        try:
+            urllib2.urlopen(req)
+        except urllib2.HTTPError as ex:
+            self.debug("err pushing data")
+            self.debug("Data: %s\nCode: %s\nRead: %s" % (data, ex.code, ex.read()))
 
 class DiscodPlugin(b3.plugin.Plugin):
 
@@ -45,9 +54,10 @@ class DiscodPlugin(b3.plugin.Plugin):
         self.chatlog = self.config.getint("settings","chatlog")
         if self.chatlog:
             self.debug("chat logging to discord enabled.")
-            self.chatLogger = chatLogger(self.webhookurl_chatlog)
             self.webhookurl_chatlog = str(self.config.get("settings","webhookurl_chatlog"))
+            self.chatLogger = chatLogger(self.webhookurl_chatlog)
             self.debug("will log chats @ %s"%self.webhookurl_chatlog)
+            self.chat_evts = [b3.events.EVT_CLIENT_SAY,b3.events.EVT_CLIENT_TEAM_SAY,b3.events.EVT_CLIENT_SQUAD_SAY]
         else:
             pass
 
@@ -110,6 +120,9 @@ class DiscodPlugin(b3.plugin.Plugin):
 
         self.registerEvent(b3.events.EVT_CLIENT_AUTH)
         self.registerEvent(b3.events.EVT_CLIENT_DISCONNECT)
+        self.registerEvent(b3.events.EVT_CLIENT_SAY)
+        self.registerEvent(b3.events.EVT_CLIENT_TEAM_SAY)
+        self.registerEvent(b3.events.EVT_CLIENT_SQUAD_SAY)
 
         # check if tables exist
         tableCheck = self._query("SHOW TABLES like 'discod'")
@@ -402,6 +415,9 @@ class DiscodPlugin(b3.plugin.Plugin):
         
     def onEvent(self,event):
         client = event.client
+        if event.type in self.chat_evts:
+            thr = threading.Thread(target = self.chatLogger.log,args=(event.client,event.data))
+            thr.start()
         if event.type == b3.events.EVT_CLIENT_DISCONNECT:
             if client in self.screenshots:
                 self.debug(self.screenshots[client])
