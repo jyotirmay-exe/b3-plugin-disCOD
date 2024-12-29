@@ -28,33 +28,33 @@ B3 Plugin for [disCOD](https://github.com/Zoro-6191/disCOD)
 ## Screenshots
 - **Commands**
     - <h4>!id</h4>
-    ![!id](https://cdn.discordapp.com/attachments/773013374647926784/982674948021682247/Screenshot_86.png)
+    <img src="https://i.imgur.com/iU7VWjg.jpg" width=400>
+
 
     - <h4>!link</h4>
-    ![!link](https://cdn.discordapp.com/attachments/773013374647926784/982674946989887568/Screenshot_84.png) <br>
-    ![!link](https://cdn.discordapp.com/attachments/773013374647926784/982933371527245865/Screenshot_85.png)
+    <img src="https://i.imgur.com/Fwchp2T.jpg" width=400>
 
     - <h4>!linktest</h4>
-    ![!linktest](https://cdn.discordapp.com/attachments/773013374647926784/982674945937137684/Screenshot_81.png)
+    <img src="https://i.imgur.com/uKpoPZ1.jpg" width=400>
 
     - <h4>!nok</h4>
-    ![!nok](https://cdn.discordapp.com/attachments/773013374647926784/982674946176221234/Screenshot_82.png)
+    <img src="https://i.imgur.com/n9ApYPP.jpg" width=400>
 
     - <h4>!resolution</h4>
-    ![!reso](https://cdn.discordapp.com/attachments/773013374647926784/982676824096133160/Screenshot_83.png)
+    <img src="https://i.imgur.com/7d5Alil.jpg" width=400>
 ---
 - **Events**
 
-    - <h4>Auto Demotion</h4>
-    ![](https://cdn.discordapp.com/attachments/773013374647926784/982674948285939782/Screenshot_87.png)
-
     - <h4>Auto Promotion</h4>
-    ![](https://cdn.discordapp.com/attachments/773013374647926784/982674945517699082/Screenshot_88.png)
+    <img src="https://i.imgur.com/VrnDUJr.jpg" width=400>
+    <img src="https://i.imgur.com/cFjv52T.jpg" width=400>
 
     - <h4>VPN Detection</h4>
-    ![](https://cdn.discordapp.com/attachments/773013374647926784/982678233097048195/Screenshot_89_copy.png)
-    <br>
-    <img src="https://cdn.discordapp.com/attachments/773013374647926784/982923326827675668/IMG_20220605_135606.png" width=582>
+    <img src="https://i.imgur.com/8VQ2r4U.png" width=400>
+
+    - <h4>Duplicate GUID</h4>
+    <img src="https://i.imgur.com/8VQ2r4U.png" width=400>
+    
 <br><br>
 ---
 <h3>NOTE:</h3>
